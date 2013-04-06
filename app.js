@@ -7,7 +7,8 @@ var express = require('express')
   , path = require('path')
   , app = express()
   , server = require('http').Server(app)
-  , io = require('socket.io').listen(server);
+  , io = require('socket.io').listen(server)
+  , redis = require('redis').createClient();
 
 /**
  * Express
@@ -96,7 +97,7 @@ function newGame(socket, partnerId) {
   partnerSocket.emit('chat', roleMessage(partnerRole));
 
   io.sockets.in(room)
-    .emit('chat', 'Type READY to start playing or BYE to quit');
+    .emit('chat', 'Type READY to start playing');
 
   var ready = 0;
   function readyGame(data) {
@@ -107,6 +108,7 @@ function newGame(socket, partnerId) {
         startGame(room);
       } else {
         this.emit('chat', 'Waiting for other player...');
+        this.broadcast.to(room).emit('chat', 'Other player is ready');
       }
     }
   }
@@ -132,86 +134,88 @@ function startGame(room) {
   }
   emitCountdown(5);
 
-  setTimeout(function() {
-    var word = 'MANILA';
-
-    // "Game controls"
-    function playGame(data) {
-      var socket = this;
-      socket.get('role', function(err, role) {
-        switch (role) {
-          case 'guess':
-            socket.broadcast.to(room).emit('chat', data);
-            if (data.toUpperCase().indexOf(word) > -1) {
-              gameOver('won');
-            }
-            break;
-          case 'answer':
-            var answer = data.replace(/[^a-z ]+/gi, '').trim();
-            if (/^(((oo)|(hind[ie])|(pwede))\s*)+$/i.test(answer)) {
-              socket.broadcast.to(room).emit('chat', answer);
-            } else {
-              socket.emit('chat', '"OO", "HINDI" or "PWEDE" only');
-            }
-            break;
-        }
-      });
-    }
-
-    io.sockets.clients(room).forEach(function(socket) {
-      // Bind "game controls"
-      socket.on('input', playGame);
-      // Show the "answer-er" the word
-      socket.get('role', function(err, role) {
-        if (role == 'answer') {
-          socket.emit('word', word);
-        }
-      });
-    });
-
-    // Recursive timer
-    var stopTimer = false;
-    function emitTimer(start) {
-      start = start || new Date().getTime();
-      var secs = start + 120000 - new Date().getTime()
-        , time = pad(Math.floor(secs / 60000), 2) + ':' +
-          pad(Math.floor(secs % 60000 / 1000), 2) + ':' + pad(secs % 1000, 3);
-      if (stopTimer) {
-        return;
+  // Get random word
+  redis.srandmember('henyokaba:words', function(err, word) {
+    setTimeout(function() {
+      // "Game controls"
+      function playGame(data) {
+        var socket = this;
+        socket.get('role', function(err, role) {
+          switch (role) {
+            case 'guess':
+              socket.broadcast.to(room).emit('chat', data);
+              if (data.toUpperCase().indexOf(word) > -1) {
+                gameOver('won');
+              }
+              break;
+            case 'answer':
+              var answer = data.replace(/[^a-z ]+/gi, '').trim();
+              if (/^(((oo)|(hind[ie])|(pwede))\s*)+$/i.test(answer)) {
+                socket.broadcast.to(room).emit('chat', answer);
+              } else {
+                socket.emit('chat', '"OO", "HINDI" or "PWEDE" only');
+              }
+              break;
+          }
+        });
       }
-      if (secs <= 0) {
-        gameOver('timesup');
-        time = '00:00:000';
-      } else {
-        setTimeout(function() {
-          emitTimer(start);
-        }, 300);
-      }
-      io.sockets.in(room).emit('time', time);
-    }
 
-    function gameOver(reason) {
-      // Announce the end
-      io.sockets.in(room).emit('chat', gameOverMessage(reason, word));
-      io.sockets.in(room)
-        .emit('chat', 'Type "PLAY" or "PLAY <ID>" to play again');
-
-      // Stop timer
-      stopTimer = 1;
-
-      // Cleanup
       io.sockets.clients(room).forEach(function(socket) {
-        socket.removeListener('input', playGame);
-        socket.on('input', findGame);
+        // Bind "game controls"
+        socket.on('input', playGame);
+        // Show the "answer-er" the word
+        socket.get('role', function(err, role) {
+          if (role == 'answer') {
+            socket.emit('word', word);
+          }
+        });
       });
-    }
 
-    // Start timer
-    emitTimer();
+      // Recursive timer
+      var stopTimer = false;
+      function emitTimer(start) {
+        start = start || new Date().getTime();
+        var secs = start + 120000 - new Date().getTime()
+          , time = pad(Math.floor(secs / 60000), 2) + ':' +
+            pad(Math.floor(secs % 60000 / 1000), 2) + ':' + pad(secs % 1000, 3);
+        if (stopTimer) {
+          return;
+        }
+        if (secs <= 0) {
+          gameOver('timesup');
+          time = '00:00:000';
+        } else {
+          setTimeout(function() {
+            emitTimer(start);
+          }, 300);
+        }
+        io.sockets.in(room).emit('time', time);
+      }
 
-  }, 5000);
+      function gameOver(reason) {
+        // Announce the end
+        io.sockets.in(room).emit('chat', gameOverMessage(reason, word));
+        io.sockets.in(room)
+          .emit('chat', 'Type "PLAY" to play again');
+
+        // Stop timer
+        stopTimer = 1;
+
+        // Cleanup
+        io.sockets.clients(room).forEach(function(socket) {
+          socket.removeListener('input', playGame);
+          socket.on('input', findGame);
+        });
+      }
+
+      // Start timer
+      emitTimer();
+
+    }, 5000);
+  });
 }
 
+/* Entry point */
 io.on('connection', function(socket) {
 
   socket.on('disconnect', function() {
@@ -228,8 +232,8 @@ io.on('connection', function(socket) {
 
   socket.emit('chat', 'Welcome to Henyo Ka Ba?!');
   socket.emit('chat', 'Type "PLAY" to play with a random player');
-  socket.emit('chat', 'Type "PLAY <ID>" to play with a specific player');
-  socket.emit('chat', 'Your ID is "' + socket.id + '"');
+  // socket.emit('chat', 'Type "PLAY <ID>" to play with a specific player');
+  // socket.emit('chat', 'Your ID is "' + socket.id + '"');
 
 });
 
