@@ -1,4 +1,4 @@
-var socket = io.connect('http://localhost:3000');
+var socket = io.connect(location.origin);
 
 socket.on('connect', function() {
   console.log('Connected as', socket.socket.sessionid);
