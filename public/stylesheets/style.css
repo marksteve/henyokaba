@@ -1,0 +1,65 @@
+* {
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+}
+body,
+#input {
+  font: 16px/1.5 'Press Start 2P', Helvetica, sans-serif;
+  color: #333;
+  text-align: center;
+}
+#henyoka {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ffd700;
+}
+h1 {
+  font-size: 200%;
+}
+#input,
+#chat {
+  border: 5px #333 solid;
+}
+#input {
+  height: 48px;
+  padding: 0 10px;
+  width: 80%;
+}
+#chat {
+  background-color: #fff;
+  list-style: none;
+  padding: 0;
+  margin: 0 10%;
+  width: 80%;
+  height: 50%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+#chat li {
+  line-height: 3;
+  border-bottom: 1px #333 dashed;
+}
+#word {
+  font-size: 150%;
+}
+#time {
+  font-size: 200%;
+}
+#online {
+  position: absolute;
+  right: 0;
+  left: 0;
+  bottom: 0;
+  padding: 0 10px;
+  background-color: #4b0082;
+  color: #fff;
+  line-height: 3;
+}
+#online span {
+  display: inline-block;
+  margin-left: 1em;
+}
